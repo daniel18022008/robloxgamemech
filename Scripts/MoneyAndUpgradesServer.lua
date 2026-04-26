@@ -8,7 +8,41 @@ local CASH_COST = 50
 local STARTING_CASH = 250
 local DATASTORE_NAME = "PlayerMoneyAndPlacedParts_v1"
 
-local templatePart = ReplicatedStorage:WaitForChild("Upgrades"):WaitForChild("Basic"):WaitForChild("Part")
+local function ensureTemplatePart()
+	local upgrades = ReplicatedStorage:FindFirstChild("Upgrades")
+	if not upgrades then
+		upgrades = Instance.new("Folder")
+		upgrades.Name = "Upgrades"
+		upgrades.Parent = ReplicatedStorage
+	end
+
+	local basic = upgrades:FindFirstChild("Basic")
+	if not basic then
+		basic = Instance.new("Folder")
+		basic.Name = "Basic"
+		basic.Parent = upgrades
+	end
+
+	local part = basic:FindFirstChild("Part")
+	if not part or not part:IsA("BasePart") then
+		if part then
+			part:Destroy()
+		end
+		part = Instance.new("Part")
+		part.Name = "Part"
+		part.Size = Vector3.new(1, 1, 1)
+		part.Color = Color3.fromRGB(255, 170, 0)
+		part.Material = Enum.Material.SmoothPlastic
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.Parent = basic
+		warn("Created fallback ReplicatedStorage/Upgrades/Basic/Part automatically.")
+	end
+
+	return part
+end
+
+local templatePart = ensureTemplatePart()
 
 local remotesFolder = ReplicatedStorage:FindFirstChild("UpgradeRemotes")
 if not remotesFolder then

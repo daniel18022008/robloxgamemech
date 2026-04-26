@@ -9,7 +9,17 @@ local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 local button = script.Parent
 
-local templatePart = ReplicatedStorage:WaitForChild("Upgrades"):WaitForChild("Basic"):WaitForChild("Part")
+local function getTemplatePart()
+	local upgrades = ReplicatedStorage:WaitForChild("Upgrades", 10)
+	local basic = upgrades and upgrades:WaitForChild("Basic", 10)
+	local part = basic and basic:WaitForChild("Part", 10)
+	if not part or not part:IsA("BasePart") then
+		error("Missing BasePart at ReplicatedStorage/Upgrades/Basic/Part")
+	end
+	return part
+end
+
+local templatePart = getTemplatePart()
 local remotes = ReplicatedStorage:WaitForChild("UpgradeRemotes")
 local placeRequest = remotes:WaitForChild("PlacePartRequest")
 
@@ -85,6 +95,7 @@ local function updatePreview()
 	local targetPart, hitPos, normal = getHitOnOwnCharacter()
 	if not targetPart then
 		previewPart.Transparency = 1
+		previewPart:SetAttribute("BodyPartName", nil)
 		return
 	end
 
