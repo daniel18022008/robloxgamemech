@@ -1,5 +1,5 @@
--- Place this LocalScript inside the ViewportFrame in StarterGui
--- It will render the local player's avatar and let you orbit with click + drag.
+-- Place this LocalScript directly inside the ViewportFrame in StarterGui.
+-- Supports mouse drag (orbit) and mouse wheel (zoom).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,58 +8,75 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local viewportFrame = script.Parent
 
+-- Required so GUI input events fire on this frame
+viewportFrame.Active = true
+
 local camera = Instance.new("Camera")
-camera.FieldOfView = 55
+camera.Name = "ViewportCamera"
+camera.FieldOfView = 50
 camera.Parent = viewportFrame
 viewportFrame.CurrentCamera = camera
 
+local worldModel = viewportFrame:FindFirstChildOfClass("WorldModel") or Instance.new("WorldModel")
+worldModel.Parent = viewportFrame
+
 local avatarModel
-local orbitYaw = 0
-local orbitPitch = math.rad(12)
-local orbitDistance = 7
+local renderConnection
 
-local isDragging = false
-local dragSensitivity = 0.007
-local zoomSensitivity = 1
+local yaw = math.rad(180)
+local pitch = math.rad(12)
+local distance = 6.5
 
-local minPitch = math.rad(-50)
-local maxPitch = math.rad(50)
-local minDistance = 4
-local maxDistance = 12
+local dragging = false
+local dragSensitivity = 0.006
+local zoomStep = 0.8
 
-local function clearViewport()
-	for _, child in ipairs(viewportFrame:GetChildren()) do
-		if child:IsA("Model") or child:IsA("WorldModel") then
-			child:Destroy()
+local minPitch = math.rad(-40)
+local maxPitch = math.rad(45)
+local minDistance = 3.5
+local maxDistance = 10
+
+local function clearWorldModel()
+	for _, child in ipairs(worldModel:GetChildren()) do
+		child:Destroy()
+	end
+end
+
+local function freezeModel(model)
+	for _, obj in ipairs(model:GetDescendants()) do
+		if obj:IsA("BasePart") then
+			obj.Anchored = true
+			obj.CanCollide = false
+		elseif obj:IsA("Script") or obj:IsA("LocalScript") then
+			obj:Destroy()
 		end
 	end
 end
 
-local function buildAvatar()
+local function createAvatarModel()
+	clearWorldModel()
+
 	local character = player.Character or player.CharacterAdded:Wait()
 	local clone = character:Clone()
-
-	for _, obj in ipairs(clone:GetDescendants()) do
-		if obj:IsA("Script") or obj:IsA("LocalScript") then
-			obj:Destroy()
-		elseif obj:IsA("BasePart") then
-			obj.Anchored = true
-			obj.CanCollide = false
-		end
-	end
-
-	clearViewport()
-
-	local worldModel = Instance.new("WorldModel")
-	worldModel.Parent = viewportFrame
+	freezeModel(clone)
 
 	clone.Parent = worldModel
+
+	-- Move model near origin so viewport camera math is consistent
+	local root = clone:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		clone:PivotTo(CFrame.new(0, 0, 0))
+	else
+		local _, boundsSize = clone:GetBoundingBox()
+		clone:PivotTo(CFrame.new(0, boundsSize.Y * 0.5, 0))
+	end
+
 	avatarModel = clone
 end
 
-local function getFocusPosition()
+local function getFocusPoint()
 	if not avatarModel then
-		return Vector3.new(0, 2, 0)
+		return Vector3.new(0, 1.5, 0)
 	end
 
 	local head = avatarModel:FindFirstChild("Head")
@@ -67,57 +84,65 @@ local function getFocusPosition()
 		return head.Position
 	end
 
-	local primary = avatarModel.PrimaryPart or avatarModel:FindFirstChild("HumanoidRootPart")
-	if primary and primary:IsA("BasePart") then
-		return primary.Position + Vector3.new(0, 1.5, 0)
+	local hrp = avatarModel:FindFirstChild("HumanoidRootPart")
+	if hrp and hrp:IsA("BasePart") then
+		return hrp.Position + Vector3.new(0, 1.2, 0)
 	end
 
-	return Vector3.new(0, 2, 0)
+	return Vector3.new(0, 1.5, 0)
 end
 
 local function updateCamera()
-	local focus = getFocusPosition()
-
+	local focus = getFocusPoint()
 	local offset = Vector3.new(
-		math.cos(orbitPitch) * math.sin(orbitYaw),
-		math.sin(orbitPitch),
-		math.cos(orbitPitch) * math.cos(orbitYaw)
-	) * orbitDistance
+		math.cos(pitch) * math.sin(yaw),
+		math.sin(pitch),
+		math.cos(pitch) * math.cos(yaw)
+	) * distance
 
 	camera.CFrame = CFrame.lookAt(focus + offset, focus)
 end
 
-viewportFrame.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		isDragging = true
+local function bindInput()
+	viewportFrame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+		end
+	end)
+
+	viewportFrame.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input, gameProcessed)
+		if gameProcessed then
+			return
+		end
+
+		if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+			yaw -= input.Delta.X * dragSensitivity
+			pitch = math.clamp(pitch - input.Delta.Y * dragSensitivity, minPitch, maxPitch)
+		elseif input.UserInputType == Enum.UserInputType.MouseWheel then
+			distance = math.clamp(distance - input.Position.Z * zoomStep, minDistance, maxDistance)
+		end
+	end)
+end
+
+local function startRender()
+	if renderConnection then
+		renderConnection:Disconnect()
 	end
-end)
+	renderConnection = RunService.RenderStepped:Connect(updateCamera)
+end
 
-viewportFrame.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		isDragging = false
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input, gameProcessed)
-	if gameProcessed then
-		return
-	end
-
-	if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
-		orbitYaw = orbitYaw - input.Delta.X * dragSensitivity
-		orbitPitch = math.clamp(orbitPitch - input.Delta.Y * dragSensitivity, minPitch, maxPitch)
-	elseif input.UserInputType == Enum.UserInputType.MouseWheel then
-		orbitDistance = math.clamp(orbitDistance - input.Position.Z * zoomSensitivity, minDistance, maxDistance)
-	end
-end)
-
-RunService.RenderStepped:Connect(updateCamera)
-
-player.CharacterAdded:Connect(function()
-	buildAvatar()
+local function rebuildAvatar()
+	createAvatarModel()
 	updateCamera()
-end)
+end
 
-buildAvatar()
-updateCamera()
+bindInput()
+startRender()
+rebuildAvatar()
+player.CharacterAdded:Connect(rebuildAvatar)
