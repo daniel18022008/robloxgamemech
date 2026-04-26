@@ -11,6 +11,11 @@ local viewportFrame = script.Parent
 -- Required so GUI input events fire on this frame
 viewportFrame.Active = true
 
+-- Make sure the model is visible in viewport lighting
+viewportFrame.Ambient = Color3.fromRGB(200, 200, 200)
+viewportFrame.LightColor = Color3.fromRGB(255, 255, 255)
+viewportFrame.LightDirection = Vector3.new(-1, -1, -1)
+
 local camera = Instance.new("Camera")
 camera.Name = "ViewportCamera"
 camera.FieldOfView = 50
@@ -53,25 +58,44 @@ local function freezeModel(model)
 	end
 end
 
+local function createAvatarFromUserId()
+	local ok, model = pcall(function()
+		return Players:CreateHumanoidModelFromUserId(player.UserId)
+	end)
+
+	if ok and model then
+		return model
+	end
+
+	return nil
+end
+
+local function cloneCurrentCharacter()
+	local character = player.Character or player.CharacterAdded:Wait()
+	local previousArchivable = character.Archivable
+	character.Archivable = true
+	local clone = character:Clone()
+	character.Archivable = previousArchivable
+	return clone
+end
+
 local function createAvatarModel()
 	clearWorldModel()
 
-	local character = player.Character or player.CharacterAdded:Wait()
-	local clone = character:Clone()
-	freezeModel(clone)
-
-	clone.Parent = worldModel
+	local model = createAvatarFromUserId() or cloneCurrentCharacter()
+	freezeModel(model)
+	model.Parent = worldModel
 
 	-- Move model near origin so viewport camera math is consistent
-	local root = clone:FindFirstChild("HumanoidRootPart")
+	local root = model:FindFirstChild("HumanoidRootPart")
 	if root and root:IsA("BasePart") then
-		clone:PivotTo(CFrame.new(0, 0, 0))
+		model:PivotTo(CFrame.new(0, 0, 0))
 	else
-		local _, boundsSize = clone:GetBoundingBox()
-		clone:PivotTo(CFrame.new(0, boundsSize.Y * 0.5, 0))
+		local _, boundsSize = model:GetBoundingBox()
+		model:PivotTo(CFrame.new(0, boundsSize.Y * 0.5, 0))
 	end
 
-	avatarModel = clone
+	avatarModel = model
 end
 
 local function getFocusPoint()
